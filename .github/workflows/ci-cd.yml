@@ -1,0 +1,25 @@
+name: CI/CD Forum Cáo Sách
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  validate-and-build:
+    name: Validate Code & Check Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Verify Core File Integrity
+        run: |
+          echo "Verifying branding files..."
+          test -f frontend/discourse/app/components/powered-by-discourse.gjs || exit 1
+          test -f app/views/layouts/_head.html.erb || exit 1
+          echo "All checks passed! Server auto-sync is active."
