@@ -1,0 +1,196 @@
+/* eslint-disable ember/no-classic-components */
+import Component from "@ember/component";
+import { fn } from "@ember/helper";
+import { action, computed } from "@ember/object";
+import { tagName } from "@ember-decorators/component";
+import { on } from "@ember-decorators/object";
+import UppyImageUploader from "discourse/components/uppy-image-uploader";
+import getURL from "discourse/lib/get-url";
+import { convertIconClass } from "discourse/lib/icon-library";
+import { ensureSpriteSymbol } from "discourse/lib/svg-sprite-loader";
+import { or } from "discourse/truth-helpers";
+import DAvatarFlair from "discourse/ui-kit/d-avatar-flair";
+import DIconGridPicker from "discourse/ui-kit/d-icon-grid-picker";
+import DRadioButton from "discourse/ui-kit/d-radio-button";
+import DTextField from "discourse/ui-kit/d-text-field";
+import { i18n } from "discourse-i18n";
+
+@tagName("")
+export default class GroupFlairInputs extends Component {
+  @computed
+  get demoAvatarUrl() {
+    return getURL("/images/avatar.png");
+  }
+
+  @computed("model.flair_type")
+  get flairPreviewIcon() {
+    return this.model?.flair_type && this.model?.flair_type === "icon";
+  }
+
+  @computed("model.flair_icon")
+  get flairPreviewIconUrl() {
+    return this.model?.flair_icon
+      ? convertIconClass(this.model?.flair_icon)
+      : "";
+  }
+
+  @on("didInsertElement")
+  _loadIcon() {
+    const icon = convertIconClass(this.model.flair_icon || "");
+
+    if (icon) {
+      ensureSpriteSymbol(icon);
+    }
+  }
+
+  @computed("model.flair_type")
+  get flairPreviewImage() {
+    return this.model?.flair_type && this.model?.flair_type === "image";
+  }
+
+  @computed("model.flair_url")
+  get flairImageUrl() {
+    return this.model?.flair_url && this.model?.flair_url?.includes("/")
+      ? this.model?.flair_url
+      : null;
+  }
+
+  @computed("flairPreviewImage")
+  get flairPreviewLabel() {
+    const key = this.flairPreviewImage ? "image" : "icon";
+    return i18n(`groups.flair_preview_${key}`);
+  }
+
+  @action
+  setFlairImage(upload) {
+    this.model.setProperties({
+      flair_url: getURL(upload.url),
+      flair_upload_id: upload.id,
+    });
+  }
+
+  @action
+  removeFlairImage() {
+    this.model.setProperties({
+      flair_url: null,
+      flair_upload_id: null,
+    });
+  }
+
+  <template>
+    <div class="group-flair-inputs" ...attributes>
+      <div class="control-group">
+        <label class="control-label" for="flair_url">{{i18n
+            "groups.flair_url"
+          }}</label>
+
+        <div class="radios">
+          <label class="radio-label" for="avatar-flair-icon">
+            <DRadioButton
+              @name="avatar-flair-icon"
+              @id="avatar-flair-icon"
+              @value="icon"
+              @selection={{this.model.flair_type}}
+            />
+            {{i18n "groups.flair_type.icon"}}
+          </label>
+
+          <label class="radio-label" for="avatar-flair-image">
+            <DRadioButton
+              @name="avatar-flair-image"
+              @id="avatar-flair-image"
+              @value="image"
+              @selection={{this.model.flair_type}}
+            />
+            {{i18n "groups.flair_type.image"}}
+          </label>
+        </div>
+
+        {{#if this.flairPreviewIcon}}
+          <DIconGridPicker
+            @value={{this.model.flair_icon}}
+            @onChange={{fn (mut this.model.flair_icon)}}
+            @showCaret={{true}}
+            @onlyAvailable={{false}}
+            @label={{unless this.model.flair_icon (i18n "select_placeholder")}}
+          />
+        {{else if this.flairPreviewImage}}
+          <UppyImageUploader
+            @imageUrl={{this.flairImageUrl}}
+            @onUploadDone={{this.setFlairImage}}
+            @onUploadDeleted={{this.removeFlairImage}}
+            @type="group_flair"
+            @id="group-flair-uploader"
+            class="no-repeat contain-image"
+          />
+          <div class="control-instructions">
+            {{i18n "groups.flair_upload_description"}}
+          </div>
+        {{/if}}
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="flair_bg_color">{{i18n
+            "groups.flair_bg_color"
+          }}</label>
+
+        <DTextField
+          @name="flair_bg_color"
+          @value={{this.model.flair_bg_color}}
+          @placeholderKey="groups.flair_bg_color_placeholder"
+          class="group-flair-bg-color input-xxlarge"
+        />
+      </div>
+
+      {{#if this.flairPreviewIcon}}
+        <div class="control-group">
+          <label class="control-label" for="flair_color">{{i18n
+              "groups.flair_color"
+            }}</label>
+
+          <DTextField
+            @name="flair_color"
+            @value={{this.model.flair_color}}
+            @placeholderKey="groups.flair_color_placeholder"
+            class="group-flair-color input-xxlarge"
+          />
+        </div>
+      {{/if}}
+
+      <div class="control-group">
+        <label class="control-label">{{this.flairPreviewLabel}}</label>
+
+        <div class="avatar-flair-preview">
+          <div class="avatar-wrapper">
+            <img
+              width="45"
+              height="45"
+              src={{this.demoAvatarUrl}}
+              class="avatar actor"
+              alt
+            />
+          </div>
+
+          {{#if
+            (or
+              this.model.flair_icon
+              this.flairImageUrl
+              this.model.flairBackgroundHexColor
+            )
+          }}
+            <DAvatarFlair
+              @flairName={{this.model.name}}
+              @flairUrl={{if
+                this.flairPreviewIcon
+                this.model.flair_icon
+                (if this.flairPreviewImage this.flairImageUrl "")
+              }}
+              @flairBgColor={{this.model.flairBackgroundHexColor}}
+              @flairColor={{this.model.flairHexColor}}
+            />
+          {{/if}}
+        </div>
+      </div>
+    </div>
+  </template>
+}

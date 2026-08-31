@@ -1,0 +1,210 @@
+import { module, test } from "qunit";
+import { setupRenderingTest } from "discourse/tests/helpers/component-test";
+import pretender, { response } from "discourse/tests/helpers/create-pretender";
+import {
+  setupRichEditor,
+  testRenderedMarkdown,
+} from "discourse/tests/helpers/rich-editor-helper";
+
+// Dragging an image exposes it as a file, as the browser does.
+function dragEvent(type, target) {
+  const dataTransfer = new DataTransfer();
+  dataTransfer.items.add(new File(["x"], "image.png", { type: "image/png" }));
+  target.dispatchEvent(
+    new DragEvent(type, { dataTransfer, bubbles: true, cancelable: true })
+  );
+}
+
+module(
+  "Integration | Component | prosemirror-editor - image extension",
+  function (hooks) {
+    setupRenderingTest(hooks);
+
+    test(
+      "basic image",
+      testRenderedMarkdown(
+        "![alt text](https://example.com/image.jpg)",
+        (assert) => {
+          assert.dom("img").exists("Image should exist");
+          assert
+            .dom("img")
+            .hasAttribute("src", "https://example.com/image.jpg");
+          assert.dom("img").hasAttribute("alt", "alt text");
+        }
+      )
+    );
+
+    test(
+      "image with title",
+      testRenderedMarkdown(
+        '![alt text](https://example.com/image.jpg "title")',
+        (assert) => {
+          assert.dom("img").exists("Image should exist");
+          assert
+            .dom("img")
+            .hasAttribute("src", "https://example.com/image.jpg");
+          assert.dom("img").hasAttribute("alt", "alt text");
+          assert.dom("img").hasAttribute("title", "title");
+        }
+      )
+    );
+
+    test(
+      "image with dimensions and title",
+      testRenderedMarkdown(
+        '![alt text|100x200](https://example.com/image.jpg "title")',
+        (assert) => {
+          assert.dom("img").exists("Image should exist");
+          assert
+            .dom("img")
+            .hasAttribute("src", "https://example.com/image.jpg");
+          assert.dom("img").hasAttribute("alt", "alt text");
+          assert.dom("img").hasAttribute("title", "title");
+          assert.dom("img").hasAttribute("width", "100");
+          assert.dom("img").hasAttribute("height", "200");
+        }
+      )
+    );
+
+    test(
+      "image with dimensions and scale",
+      testRenderedMarkdown(
+        "![alt text|100x200, 50%](https://example.com/image.jpg)",
+        (assert) => {
+          assert.dom("img").exists("Image should exist");
+          assert
+            .dom("img")
+            .hasAttribute("src", "https://example.com/image.jpg");
+          assert.dom("img").hasAttribute("alt", "alt text");
+          assert.dom("img").hasAttribute("width", "100");
+          assert.dom("img").hasAttribute("height", "200");
+          assert.dom("img").hasAttribute("data-scale", "50");
+
+          // Check style attribute directly
+          const img = document.querySelector("img");
+          assert.strictEqual(
+            img.style.width,
+            "50px",
+            "Image width style should be 50px"
+          );
+        }
+      )
+    );
+
+    test(
+      "image with dimensions, scale and thumbnail",
+      testRenderedMarkdown(
+        "![alt text|100x200, 50%|thumbnail](https://example.com/image.jpg)",
+        (assert) => {
+          assert.dom("img").exists("Image should exist");
+          assert
+            .dom("img")
+            .hasAttribute("src", "https://example.com/image.jpg");
+          assert.dom("img").hasAttribute("alt", "alt text");
+          assert.dom("img").hasAttribute("width", "100");
+          assert.dom("img").hasAttribute("height", "200");
+          assert.dom("img").hasAttribute("data-scale", "50");
+          assert.dom("img").hasAttribute("data-thumbnail", "true");
+
+          // Check style attribute directly
+          const img = document.querySelector("img");
+          assert.strictEqual(
+            img.style.width,
+            "50px",
+            "Image width style should be 50px"
+          );
+        }
+      )
+    );
+
+    test(
+      "image with parentheses in URL",
+      testRenderedMarkdown(
+        "![alt text](https://example.com/image\\(1\\).jpg)",
+        (assert) => {
+          assert.dom("img").exists("Image should exist");
+          assert
+            .dom("img")
+            .hasAttribute("src", "https://example.com/image(1).jpg");
+          assert.dom("img").hasAttribute("alt", "alt text");
+        }
+      )
+    );
+
+    test(
+      "video placeholder",
+      testRenderedMarkdown("![alt text|video](upload://hash)", (assert) => {
+        assert
+          .dom(".onebox-placeholder-container")
+          .exists("Video placeholder should exist");
+        assert
+          .dom(".onebox-placeholder-container")
+          .hasAttribute("data-orig-src", "upload://hash");
+        assert
+          .dom(".placeholder-icon.video")
+          .exists("Video placeholder icon should exist");
+      })
+    );
+
+    test(
+      "audio element",
+      testRenderedMarkdown("![alt text|audio](upload://hash)", (assert) => {
+        assert.dom("audio").exists("Audio element should exist");
+        assert.dom("audio").hasAttribute("preload", "metadata");
+        assert.dom("audio source").exists("Audio source should exist");
+        assert
+          .dom("audio source")
+          .hasAttribute("data-orig-src", "upload://hash");
+      })
+    );
+
+    test("upload:// image alt text is preserved verbatim across round-trips", async function (assert) {
+      pretender.post("/uploads/lookup-urls", () => response([]));
+      await testRenderedMarkdown(
+        "![_test_file_|100x100](upload://hash)",
+        (a) => {
+          a.dom("img").hasAttribute("alt", "_test_file_");
+        }
+      ).call(this, assert);
+    });
+
+    test("dragging an image within the editor is a move, not an upload", async function (assert) {
+      this.siteSettings.rich_editor = true;
+
+      const [{ view }] = await setupRichEditor(
+        assert,
+        "![alt text](https://example.com/image.jpg)"
+      );
+      const image = view.dom.querySelector("img");
+      let reachedUploadTarget = false;
+      view.dom.parentElement.addEventListener(
+        "drop",
+        () => (reachedUploadTarget = true)
+      );
+
+      dragEvent("dragstart", image);
+      assert.true(!!view.dragging, "the editor owns the drag");
+
+      dragEvent("drop", image);
+      assert.false(reachedUploadTarget, "the drop never reaches the uploader");
+      assert.strictEqual(view.dragging, null, "the editor handled the move");
+    });
+
+    test("a file dropped from outside still reaches the uploader", async function (assert) {
+      this.siteSettings.rich_editor = true;
+
+      const [{ view }] = await setupRichEditor(
+        assert,
+        "![alt text](https://example.com/image.jpg)"
+      );
+      let reachedUploadTarget = false;
+      view.dom.parentElement.addEventListener(
+        "drop",
+        () => (reachedUploadTarget = true)
+      );
+
+      dragEvent("drop", view.dom.querySelector("img"));
+      assert.true(reachedUploadTarget, "the drop reaches the uploader");
+    });
+  }
+);

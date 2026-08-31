@@ -1,0 +1,79 @@
+import Component from "@glimmer/component";
+import { service } from "@ember/service";
+import { trustHTML } from "@ember/template";
+import { userPath } from "discourse/lib/url";
+import dConcatClass from "discourse/ui-kit/helpers/d-concat-class";
+import { renderAvatar } from "discourse/ui-kit/helpers/d-user-avatar";
+
+export default class ChatUserAvatar extends Component {
+  @service chatStateManager;
+  @service chat;
+
+  get avatar() {
+    return trustHTML(
+      renderAvatar(this.args.user, { imageSize: this.avatarSize })
+    );
+  }
+
+  get interactive() {
+    return this.args.interactive ?? true;
+  }
+
+  get avatarSize() {
+    return this.args.avatarSize || "tiny";
+  }
+
+  get showPresence() {
+    return this.args.showPresence ?? true;
+  }
+
+  get isOnline() {
+    const users = (this.args.chat || this.chat).presenceChannel?.users;
+
+    return (
+      this.showPresence &&
+      !!users?.find(
+        ({ id, username }) =>
+          this.args.user?.id === id || this.args.user?.username === username
+      )
+    );
+  }
+
+  get userPath() {
+    return userPath(this.args.user.username);
+  }
+
+  get ariaHidden() {
+    return this.args.ariaHidden ?? false;
+  }
+
+  get isFullPageActive() {
+    return this.chatStateManager.isFullPageActive ? "true" : "false";
+  }
+
+  <template>
+    <div
+      class={{dConcatClass "chat-user-avatar" (if this.isOnline "is-online")}}
+      data-username={{@user.username}}
+    >
+      {{#if this.interactive}}
+        <a
+          class="chat-user-avatar__container"
+          href={{this.userPath}}
+          data-user-card={{@user.username}}
+          aria-hidden={{if this.ariaHidden "true"}}
+          tabindex={{if this.ariaHidden "-1"}}
+        >
+          {{this.avatar}}
+        </a>
+      {{else}}
+        <span
+          class="chat-user-avatar__container"
+          aria-hidden={{if this.ariaHidden "true"}}
+        >
+          {{this.avatar}}
+        </span>
+      {{/if}}
+    </div>
+  </template>
+}
